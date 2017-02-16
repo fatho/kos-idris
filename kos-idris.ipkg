@@ -1,0 +1,10 @@
+package kos-idris
+
+pkgs = contrib
+
+modules = Language.KOS.Core
+        , Language.KOS.CodeGen
+        , Language.KOS.Monad
+        , Language.KOS.Syntax
+        , Language.KOS.Types
+
