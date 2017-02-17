@@ -79,8 +79,8 @@ in ((x, w), dropScope s', [])
 
 ||| Root function used for constructing kOS scripts.
 export
-kosScript : ScopedKOS [] a -> Script
-kosScript gen = let (x,s,w) = runKOS (gen someScope) (MkKOSState 0) in SBlock w
+kosScript : (s : Scope) -> ScopedKOS [] a -> Script s
+kosScript sc gen = let (x,s,w) = runKOS (gen sc) (MkKOSState 0) in w
 
 ||| Declares a local variable with a fixed name.
 export

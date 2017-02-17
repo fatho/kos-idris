@@ -65,5 +65,5 @@ genStmt (SIf c t e) = "if " ++ genVal c ++ " " ++ genStmt t ++ " else " ++ genSt
 genStmt (SUntil c b) = "until " ++ genVal c ++ " " ++ genStmt b
 genStmt (SFor v e b) = "for " ++ v ++ " in " ++ genVal e ++ " " ++ genStmt b
 
-generateCode : Script -> String
-generateCode = genStmt
+generateCode : Script s -> String
+generateCode script = unlines $ map genStmt script

@@ -237,7 +237,7 @@ export
 implicit valStmt : Val vs ty -> {auto p : IsSuffix vs scope} -> Stmt scope
 valStmt = SVal
 
-||| Represents a kOS script file. For now, a script is a statement in the global scope.
+||| Represents a kOS script file. For now, a script is a list of statements in a single-level scope.
 public export
-Script : Type
-Script = Stmt []
+Script : Scope -> Type
+Script scope = List (Stmt [scope])

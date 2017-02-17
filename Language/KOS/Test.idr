@@ -1,5 +1,6 @@
 module Language.KOS.Test
 
+import Language.KOS.CodeGen
 import Language.KOS.Syntax
 
 kMin : Ref Get [] (Fun [Scalar, Scalar] [] Scalar)
@@ -23,8 +24,8 @@ true = unsafeVar "true" Get
 false : Val [] Boolean
 false = unsafeVar "false" Get
 
-foo : Script
-foo = kosScript $ \s1 => do
+foo : Script Language.KOS.Core.someScope
+foo = kosScript someScope $ \s1 => do
     x <- local 1
     y <- local 2
     x := 3 + 3
@@ -35,5 +36,5 @@ foo = kosScript $ \s1 => do
       x := 2
     ENDIF
     z <- local $ call kMin [x, y]
-    call (z # kToString) []
+    s <- local $ call (z # kToString) []
     pure ()
