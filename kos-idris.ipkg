@@ -1,4 +1,4 @@
-package kos-idris
+package kosdsl
 
 pkgs = contrib
 

@@ -73,9 +73,11 @@ export
 implicit valKOS : Val vs ty -> {auto p : IsSuffix vs scope} -> KOS scope ()
 valKOS v = emit (SVal v)
 
-collect : KOS (s :: scope) a -> KOS scope (a, List (Stmt (s :: scope)))
-collect action = MkKOS $ \s => let (x, s', w) = runKOS action (enterScope s)
-in ((x, w), dropScope s', [])
+collectNested : KOS (s :: scope) a -> KOS scope (a, StmtList (s :: scope))
+collectNested action = MkKOS $ \s => let (x, s', w) = runKOS action (enterScope s) in ((x, w), dropScope s', [])
+
+collect : KOS [] a -> KOS scope (a, StmtList [])
+collect action = MkKOS $ \s => let (x, s', w) = runKOS action (believe_me s) in ((x, w), believe_me s', [])
 
 ||| Root function used for constructing kOS scripts.
 export
@@ -91,7 +93,7 @@ local' name val = do
 
 ||| Declares a local variable with a fresh name.
 export
-local : Val vs a -> {auto p : IsSuffix vs scope} -> KOS scope (Ref Any scope a)
+local : {a : Type} -> Val vs a -> {auto p : IsSuffix vs scope} -> KOS scope (Ref Any scope a)
 local val = do
       name <- freshName "l"
       local' name val
@@ -100,7 +102,7 @@ local val = do
 export
 block : ScopedKOS s a -> KOS s a
 block gen = do
-  (x, st) <- collect $ gen someScope
+  (x, st) <- collectNested $ gen someScope
   emit (SBlock st)
   pure x
 
@@ -115,15 +117,86 @@ export
 kIf : Val vs Boolean -> {auto p : IsSuffix vs scope}
     -> ScopedKOS scope a -> ScopedKOS scope b -> KOS scope (a,b)
 kIf cond kthen kelse = do
-    (retThen, stmtThen) <- collect $ kthen someScope
-    (retElse, stmtElse) <- collect $ kelse someScope
-    emit $ SIf cond (SBlock stmtThen) (SBlock stmtElse)
+    (retThen, stmtThen) <- collectNested $ kthen someScope
+    (retElse, stmtElse) <- collectNested $ kelse someScope
+    emit $ SIf cond stmtThen stmtElse
     pure (retThen, retElse)
 
 ||| Builds a UNTIL-loop
 export
 kUntil : Val vs Boolean -> {auto p : IsSuffix vs scope} -> ScopedKOS scope a -> KOS scope a
 kUntil cond body = do
-       (ret, stmtBody) <- collect $ body someScope
-       emit $ SUntil cond (SBlock stmtBody)
+       (ret, stmtBody) <- collectNested $ body someScope
+       emit $ SUntil cond stmtBody
        pure ret
+
+||| Builds a FOR-loop
+export
+kFor : Val vs (Enumerable ty) -> {auto p : IsSuffix vs scope}
+     -> ((s : Scope) -> Ref Get (s :: scope) ty -> KOS (s :: scope) a) -> KOS scope a
+kFor enum body = do
+  name <- freshName "fv"
+  (ret, stmtBody) <- collectNested $ body someScope (unsafeVar name Get)
+  emit $ SFor name enum stmtBody
+  pure ret
+
+export
+break : KOS scope ()
+break = emit SBreak
+
+export
+toggle : Ref Any vs Boolean -> {auto p : IsSuffix vs scope} -> KOS scope ()
+toggle r = emit (SToggle r)
+
+export
+turnOn : Ref Any vs Boolean -> {auto p : IsSuffix vs scope} -> KOS scope ()
+turnOn r = emit (STurnOn r)
+
+export
+turnOff : Ref Any vs Boolean -> {auto p : IsSuffix vs scope} -> KOS scope ()
+turnOff r = emit (STurnOff r)
+
+export
+print : Val vs String -> {auto p : IsSuffix vs scope} -> KOS scope ()
+print str = emit (SPrint str)
+
+export
+wait : Val vs Scalar -> {auto p : IsSuffix vs scope} -> KOS scope ()
+wait dur = emit (SWait dur)
+
+export
+waitUntil : Val vs Boolean -> {auto p : IsSuffix vs scope} -> KOS scope ()
+waitUntil cond = emit (SWaitUntil cond)
+
+||| Declares a local lock with a fixed name.
+export
+localLock' : String -> Val vs a -> {auto p : IsSuffix vs scope} -> KOS scope (Ref Get scope a)
+localLock' name val = do
+           emit (SLocalLock name val)
+           pure (RVar name)
+
+||| Declares a local lock with a fresh name.
+export
+localLock : {a : Type} -> Val vs a -> {auto p : IsSuffix vs scope} -> KOS scope (Ref Get scope a)
+localLock val = do
+      name <- freshName "lock"
+      localLock' name val
+
+||| Locks a global reference.
+export
+lock : Ref Any scope a -> Val vs a -> {auto p : IsSuffix vs scope} -> KOS scope ()
+lock ref val = emit (SLock ref val)
+
+export
+when : Val [] Boolean -> KOS [] c -> KOS scope c
+when cond body = do
+     (ret, stmts) <- collect body
+     emit (SWhen cond stmts)
+     pure ret
+
+export
+on : Val [] a -> KOS [] c -> KOS scope c
+on cond body = do
+   (ret, stmts) <- collect body
+   emit (SOn cond stmts)
+   pure ret

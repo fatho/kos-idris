@@ -133,6 +133,7 @@ mutual
             -> Val s2 b -> {auto p2 : IsSuffix s2 vs} -> Val vs c
      VUnOp : UnOp a c -> Val s1 a -> {auto p1 : IsSuffix s1 vs} -> Val vs c
      VScalar : Double -> Val scope Scalar
+     VString : String -> Val scope String
 
      VRef  : Ref a rs ty -> {auto ap : can Get a} -> {auto p : IsSuffix rs vs} -> Val vs ty
      VGet  : Val s1 ty -> {auto sp1 : IsSuffix s1 vs} -> Accessor a s2 ty' ty
@@ -188,49 +189,87 @@ export
 implicit refVal : Ref a rs ty -> {auto ap : can Get a } -> {auto p : IsSuffix rs vs} -> Val vs ty
 refVal r = VRef r
 
+export implicit strVal : String -> Val vs String
+strVal = VString
+
 ||| Allows to use a value where a super type is needed.
 export
 superCast : Val vs ty -> {auto p : ty :<= ty'} -> Val vs ty'
 superCast v = believe_me v
 
-namespace noopts
-  ||| Builds a value from a function call.
-  export
-  call : Val sc1 (Fun args opt ret) -> {auto p : IsSuffix sc1 sc} -> ArgList sc args -> Val sc ret
-  call v args = VCall v args []
-
-namespace opts
-  ||| Builds a value from a function call.
-  export
-  call : Val sc1 (Fun args opt ret) -> {auto p : IsSuffix sc1 sc} -> ArgList sc args 
-       -> OptArgList sc opt -> Val sc ret
-  call = VCall
-
-||| Type of kOS statements. The data constructors are not meant to be used directly, 
-||| but should be created using the `KOS` monad instead.
 public export
-data Stmt : ScopeStack -> Type where
-     ||| Treats an expression as a value. Useful for expressions with side-effects, such as function calls.
-     SVal    : Val vs ty -> {auto p : IsSuffix vs scope} -> Stmt scope
-     ||| Introduces a nested scope.
-     SBlock  : List (Stmt (s :: scope)) -> Stmt scope
-     ||| Declares a local variable in the current scope.
-     SLocal  : String -> Val vs ty -> {auto p : IsSuffix vs scope} -> Stmt scope
-     ||| Declares a global variable.
-     SGlobal : String -> Val vs ty -> {auto p : IsSuffix vs scope} -> Stmt scope
-     ||| Assigns a value to something assignable.
-     SAssign : RefAccessor a rs ty -> {auto ap : can Set a} -> {auto p : IsSuffix rs scope}
-             -> Val sv ty -> {auto p2 : IsSuffix sv scope} -> Stmt scope
-     ||| An if statement. Note that in order to seperate the scope of the then/else branches,
-     ||| an explicit block needs to be introduced.
-     SIf     : Val sc Boolean -> {auto p : IsSuffix sc scope}
-             -> Stmt scope -> Stmt scope -> Stmt scope
-     ||| UNTIL loop.
-     SUntil  : Val sc Boolean -> {auto p : IsSuffix sc scope}
-             -> Stmt scope -> Stmt scope
-     ||| FOR loop.
-     SFor    : String -> Val se enumty -> {auto p2 : IsSuffix se scope}
-             -> {auto p3 : enumty :<= Enumerable ty} -> Stmt scope -> Stmt scope
+interface Callable (v : ScopeStack -> Type -> Type) where
+  ||| Builds a value from a function call.
+  call : v sc1 (Fun args opt ret) -> ArgList sc args -> {auto p : IsSuffix sc1 sc} -> Val sc ret
+  ||| Builds a value from a function call with optional arguments.
+  optcall : v sc1 (Fun args opt ret) -> ArgList sc args -> OptArgList sc opt -> {auto p : IsSuffix sc1 sc} -> Val sc ret
+
+export Callable Val where
+  call v args = VCall v args []
+  optcall v args opts = VCall v args opts
+
+export Callable (Ref Get) where
+  call r = call (refVal r)
+  optcall r = optcall (refVal r)
+
+export Callable (Ref Any) where
+  call r = call (refVal r)
+  optcall r = optcall (refVal r)
+
+mutual
+  ||| List of sequential statements in the same scope.
+  public export
+  StmtList : ScopeStack -> Type
+  StmtList sc = List (Stmt sc)
+
+  ||| Type of kOS statements. The data constructors are not meant to be used directly,
+  ||| but should be created using the `KOS` monad instead.
+  public export
+  data Stmt : ScopeStack -> Type where
+       ||| Treats an expression as a value. Useful for expressions with side-effects, such as function calls.
+       SVal    : Val vs ty -> {auto p : IsSuffix vs scope} -> Stmt scope
+       ||| Introduces a nested scope.
+       SBlock  : StmtList (s :: scope) -> Stmt scope
+       ||| Declares a local variable in the current scope.
+       SLocal  : String -> Val vs ty -> {auto p : IsSuffix vs scope} -> Stmt scope
+       ||| Declares a global variable.
+       SGlobal : String -> Val vs ty -> {auto p : IsSuffix vs scope} -> Stmt scope
+       ||| Assigns a value to something assignable.
+       SAssign : RefAccessor a rs ty -> {auto ap : can Set a} -> {auto p : IsSuffix rs scope}
+               -> Val sv ty -> {auto p2 : IsSuffix sv scope} -> Stmt scope
+       SToggle : RefAccessor Any rs ty -> {auto p : IsSuffix rs scope} -> Stmt scope
+       STurnOn     : RefAccessor Any rs ty -> {auto p : IsSuffix rs scope} -> Stmt scope
+       STurnOff    : RefAccessor Any rs ty -> {auto p : IsSuffix rs scope} -> Stmt scope
+       ||| An if statement. Note that in order to seperate the scope of the then/else branches,
+       ||| an explicit block needs to be introduced.
+       SIf     : Val sc Boolean -> {auto p : IsSuffix sc scope}
+               -> StmtList (s::scope) -> StmtList (s::scope) -> Stmt scope
+       ||| UNTIL loop.
+       SUntil  : Val sc Boolean -> {auto p : IsSuffix sc scope}
+               -> StmtList (s::scope) -> Stmt scope
+       ||| FOR loop.
+       SFor    : String -> Val se enumty -> {auto p2 : IsSuffix se scope}
+               -> {auto p3 : enumty :<= Enumerable ty} -> StmtList (s::scope) -> Stmt scope
+
+       ||| Break from a loop.
+       SBreak : Stmt scope
+
+       ||| WAIT statement
+       SWait   : Val se Scalar -> {auto p : IsSuffix se scope} -> Stmt scope
+       ||| WAIT UNTIL statement
+       SWaitUntil : Val se Boolean -> {auto p : IsSuffix se scope} -> Stmt scope
+
+       ||| LOCAL LOCK statement
+       SLocalLock : String -> Val vs ty -> {auto p : IsSuffix vs scope} -> Stmt scope
+       ||| LOCK statement
+       SLock : Ref Any sr ty -> {auto p : IsSuffix sr scope} -> Val sv ty
+             -> {auto p2 : IsSuffix sv scope} -> Stmt scope
+       ||| PRINT statement
+       SPrint : Val sc String -> {auto p : IsSuffix sc scope} -> Stmt scope
+       ||| WHEN trigger
+       SWhen : Val [] Boolean -> StmtList [] -> Stmt scope
+       ||| ON trigger
+       SOn : Val [] a -> StmtList [] -> Stmt scope
 
 ||| Allows to use a kOS value as a statement. Useful for function calls.
 export

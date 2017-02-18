@@ -7,8 +7,21 @@ import public Language.KOS.Core
 import public Language.KOS.Monad
 import public Language.KOS.Types
 
+%access export
+
 syntax [ref] ":=" [val] = assign ref val
-syntax "if" [cond] "then" [kthen] "else" [kelse] "endif" = kIf cond (\_ => kthen) (\_ => kelse)
+syntax "if" [cond] ":" [kthen] "else" ":" [kelse] = kIf cond (\_ => kthen) (\_ => kelse)
+syntax "if" [cond] "then" [kthen] "endif" = kIf cond (\_ => kthen) (\_ => pure ())
+syntax "block" [body] = block (\_ => body)
+syntax "until" [cond] ":" [body] = kUntil cond (\_ => body)
+syntax "for" {v} "in" [enum] ":" [body] = kFor enum (\_, v => body)
+syntax "lock" [ref] "to" [val] = lock ref val
+syntax "local" "lock" [val] = localLock val
+syntax "wait" "until" [cond] = waitUntil cond
+syntax [ref] "off" = turnOff ref
+syntax [ref] "on" = turnOn ref
+syntax "when" [cond] ":" [body] = when cond body
+syntax "on" [cond] ":" [body] = on cond body
 
 -- Implement standard interfaces for values.
 -- The problem: all values must be in the same scope for this to work.

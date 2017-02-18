@@ -8,8 +8,6 @@ import public Data.Vect
 data Scalar
 ||| Boolean type
 data Boolean
-||| String type
-data KString
 ||| structure type
 data Structure
 ||| function type

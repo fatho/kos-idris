@@ -6,23 +6,23 @@ import Language.KOS.Syntax
 kMin : Ref Get [] (Fun [Scalar, Scalar] [] Scalar)
 kMin = RVar "min"
 
-kToString : Accessor Get [] (Fun [] [] KString) ty
+kToString : Accessor Get [] (Fun [] [] String) ty
 kToString = ASuffix "tostring"
 
 kFoo : Accessor Get [] Scalar ty
 kFoo = ASuffix "foo"
 
--- syntax LOCAL {x} IS [val] [rest] = (local "foo" val >>= \x -> rest)
---syntax LOCAL IS [val] = local val
-syntax BLOCK [stmts] = block $ \_ => stmts
-syntax [ref] ":=" [val] = assign ref val
-syntax IF [cond] THEN [kthen] ELSE [kelse] ENDIF = kIf cond (\_ => kthen) (\_ => kelse)
-
-true : Val [] Boolean
+true : Ref Get [] Boolean
 true = unsafeVar "true" Get
 
-false : Val [] Boolean
+false : Ref Get [] Boolean
 false = unsafeVar "false" Get
+
+AG1 : Ref Any [] Boolean
+AG1 = unsafeVar "AG1" Any
+
+someList : Ref Get [] (Enumerable String)
+someList = unsafeVar "lst" Get
 
 foo : Script Language.KOS.Core.someScope
 foo = kosScript someScope $ \s1 => do
@@ -30,11 +30,21 @@ foo = kosScript someScope $ \s1 => do
     y <- local 2
     x := 3 + 3
     y := y + x
-    IF y > 3 THEN do
+    if (y > 3):
       x := 1
-    ELSE do
+    else:
       x := 2
-    ENDIF
     z <- local $ call kMin [x, y]
     s <- local $ call (z # kToString) []
-    pure ()
+    for e in someList:
+        print e
+    until (x <= 0):
+          x := x - 1
+    b <- local true
+    toggle b
+    b on
+    b off
+    on AG1: do
+       print "AG1"
+    toggle AG1
+    print "end"

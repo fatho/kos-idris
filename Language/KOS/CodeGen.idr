@@ -1,5 +1,6 @@
 module Language.KOS.CodeGen
 
+import Data.List
 import Data.Vect
 
 import public Language.KOS.Core
@@ -26,44 +27,67 @@ genUnOp : UnOp a b -> String
 genUnOp OpNot = "not"
 genUnOp OpNeg = "-"
 
+reqPrec : Int -> String -> Int -> String
+reqPrec mustHave str actual = if actual > mustHave then "(" ++ str ++ ")" else str
+
+escapeString : String -> String
+escapeString = pack . foldr escape Prelude.List.Nil . unpack where
+  escape c str = if c == '"' then '\\' :: c :: str else c :: str
+
 mutual
   genArgs : ArgList scope args -> OptArgList scope opt -> String
   genArgs [] [] = ""
-  genArgs [] (x :: []) = genVal x
-  genArgs [] (x :: xs) = genVal x ++ ", " ++ genArgs [] xs
-  genArgs (x :: []) [] = genVal x
-  genArgs (x :: []) xs = genVal x ++ ", " ++ genArgs [] xs
-  genArgs (x :: xs) ys = genVal x ++ ", " ++ genArgs xs ys
+  genArgs [] (x :: []) = genVal x 10
+  genArgs [] (x :: xs) = genVal x 10 ++ ", " ++ genArgs [] xs
+  genArgs (x :: []) [] = genVal x 10
+  genArgs (x :: []) xs = genVal x 10 ++ ", " ++ genArgs [] xs
+  genArgs (x :: xs) ys = genVal x 10 ++ ", " ++ genArgs xs ys
 
   genAccessor : Accessor a s ty' ty -> String
   genAccessor (ASuffix x) = ":" ++ x
-  genAccessor (AIndex ix) = "[" ++ genVal ix ++ "]"
+  genAccessor (AIndex ix) = "[" ++ genVal ix 10 ++ "]"
   genAccessor (ACompose ac1 ac2) = genAccessor ac1 ++ genAccessor ac2
 
   genRef : Ref a scope ty -> String
   genRef (RVar x) = x
 
-  genVal : Val scope ty -> String
-  genVal (VCall f args optargs) = "(" ++ genVal f ++ ")(" ++ genArgs args optargs ++ ")"
-  genVal (VBinOp op x y) = "(" ++ genVal x ++ genBinOp op ++ genVal y ++ ")"
-  genVal (VUnOp op x) = "(" ++ genUnOp op ++ " " ++ genVal x ++ ")"
-  genVal (VScalar x) = show x
-  genVal (VRef x) = genRef x
-  genVal (VGet x ac) = genVal x ++ genAccessor ac
+  genVal : Val scope ty -> Int -> String
+  genVal (VCall f args optargs) = reqPrec 10 (genVal f 10 ++ "(" ++ genArgs args optargs ++ ")")
+  genVal (VBinOp op x y) = reqPrec 5 (genVal x 6 ++ genBinOp op ++ genVal y 6)
+  genVal (VUnOp op x) = reqPrec 5 (genUnOp op ++ " " ++ genVal x 6)
+  genVal (VScalar x) = \_ => show x
+  genVal (VString x) = \_ => "\"" ++ escapeString x ++ "\""
+  genVal (VRef x) = \_ => genRef x
+  genVal (VGet x ac) = reqPrec 10 (genVal x 10 ++ genAccessor ac)
 
 genRefAccessor : RefAccessor a s ty -> String
 genRefAccessor (RARef x) = genRef x
 genRefAccessor (RAAccess x y) = genRefAccessor x ++ genAccessor y
 
-genStmt : Stmt scope -> String
-genStmt (SVal x) = genVal x ++ "."
-genStmt (SBlock xs) = "{\n" ++ unlines (assert_total (map genStmt xs))  ++ "}"
-genStmt (SLocal name val) = "local " ++ name ++ " is " ++ genVal val ++ "."
-genStmt (SGlobal name val) = "global  " ++ name ++ " is " ++ genVal val ++ "."
-genStmt (SAssign r val) = "set " ++ genRefAccessor r ++ " to " ++ genVal val ++ "."
-genStmt (SIf c t e) = "if " ++ genVal c ++ " " ++ genStmt t ++ " else " ++ genStmt e
-genStmt (SUntil c b) = "until " ++ genVal c ++ " " ++ genStmt b
-genStmt (SFor v e b) = "for " ++ v ++ " in " ++ genVal e ++ " " ++ genStmt b
+mutual
+  genStmtList : StmtList scope -> String
+  genStmtList xs = "{\n" ++ unlines (assert_total (map genStmt xs))  ++ "}"
+
+  genStmt : Stmt scope -> String
+  genStmt (SVal x) = genVal x 10 ++ "."
+  genStmt (SBlock xs) = genStmtList xs
+  genStmt (SLocal name val) = "local " ++ name ++ " is " ++ genVal val 10 ++ "."
+  genStmt (SGlobal name val) = "global  " ++ name ++ " is " ++ genVal val 10 ++ "."
+  genStmt (SAssign r val) = "set " ++ genRefAccessor r ++ " to " ++ genVal val 10 ++ "."
+  genStmt (SToggle r) = "toggle " ++ genRefAccessor r ++ "."
+  genStmt (STurnOn r) = genRefAccessor r ++ " on."
+  genStmt (STurnOff r) = genRefAccessor r ++ " off."
+  genStmt (SIf c t e) = "if " ++ genVal c 10 ++ " " ++ genStmtList t ++ " else " ++ genStmtList e
+  genStmt (SUntil c b) = "until " ++ genVal c 10 ++ " " ++ genStmtList b
+  genStmt (SFor v e b) = "for " ++ v ++ " in " ++ genVal e 10 ++ " " ++ genStmtList b
+  genStmt (SBreak) = "break."
+  genStmt (SWait x) = "wait " ++ genVal x 10 ++ "."
+  genStmt (SWaitUntil x) = "wait until " ++ genVal x 10 ++ "."
+  genStmt (SPrint x) = "print " ++ genVal x 10 ++ "."
+  genStmt (SLocalLock name val) = "local lock " ++ name ++ " to " ++ genVal val 10 ++ "."
+  genStmt (SLock ref val) = "lock " ++ genRefAccessor ref ++ " to " ++ genVal val 10 ++ "."
+  genStmt (SWhen cond body) = "when " ++ genVal cond 10 ++ " then " ++ genStmtList body
+  genStmt (SOn trig body) = "on " ++ genVal trig 10 ++ " " ++ genStmtList body
 
 generateCode : Script s -> String
 generateCode script = unlines $ map genStmt script
